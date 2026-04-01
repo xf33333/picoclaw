@@ -19,6 +19,7 @@ type (
 	GoogleExtra            = protocoltypes.GoogleExtra
 	ContentBlock           = protocoltypes.ContentBlock
 	CacheControl           = protocoltypes.CacheControl
+	MessageExtra           = protocoltypes.MessageExtra
 )
 
 type LLMProvider interface {

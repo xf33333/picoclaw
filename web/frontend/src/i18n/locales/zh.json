@@ -7,6 +7,7 @@
     "agent_group": "智能体",
     "skills": "技能",
     "tools": "工具",
+    "usage": "使用统计",
     "services": "服务",
     "channels_group": "频道",
     "show_more_channels": "更多",
@@ -572,5 +573,36 @@
       "title": "查看文档",
       "description": "需要更多帮助？点击右上角的文档按钮，查看详细的使用文档和配置指南。"
     }
+  },
+  "usage": {
+    "title": "使用统计",
+    "description": "查看每个会话、每个模型的消息数量、Token 使用量和费用估算。",
+    "select_date_range": "选择日期范围",
+    "date_range": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7_days": "最近 7 天",
+      "last_30_days": "最近 30 天",
+      "this_month": "本月",
+      "last_month": "上月"
+    },
+    "total_messages": "总消息数",
+    "messages_in_period": "期间内消息总数",
+    "input_tokens": "输入 Token",
+    "output_tokens": "输出 Token",
+    "tokens_in_period": "期间内 Token 总数",
+    "estimated_cost": "估算费用",
+    "cost_estimate": "基于模型定价估算",
+    "model_breakdown": "模型明细",
+    "model_breakdown_desc": "按模型分类的使用统计明细",
+    "load_error": "加载使用统计失败",
+    "no_data": "暂无使用统计数据",
+    "model_name": "模型",
+    "messages": "消息数",
+    "input": "输入",
+    "output": "输出",
+    "total": "总计",
+    "cost": "费用",
+    "sessions": "会话数"
   }
 }

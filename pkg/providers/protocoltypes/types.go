@@ -70,6 +70,13 @@ type Message struct {
 	SystemParts      []ContentBlock `json:"system_parts,omitempty"` // structured system blocks for cache-aware adapters
 	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`
 	ToolCallID       string         `json:"tool_call_id,omitempty"`
+	ExtraContent     *MessageExtra  `json:"extra_content,omitempty"` // additional metadata (usage, model, etc.)
+}
+
+// MessageExtra holds optional metadata attached to a message.
+type MessageExtra struct {
+	Usage map[string]any `json:"usage,omitempty"` // token usage info
+	Model string         `json:"model,omitempty"` // model name used
 }
 
 type ToolDefinition struct {

@@ -2206,6 +2206,51 @@ turnLoop:
 			Content:          response.Content,
 			ReasoningContent: response.ReasoningContent,
 		}
+		// Include usage info in the message for usage statistics tracking
+		logger.InfoCF("agent", "LLM response usage info", map[string]any{
+			"agent_id":  ts.agent.ID,
+			"iteration": iteration,
+			"has_usage": response.Usage != nil,
+			"prompt_tokens": func() int {
+				if response.Usage != nil {
+					return response.Usage.PromptTokens
+				}
+				return 0
+			}(),
+			"output_tokens": func() int {
+				if response.Usage != nil {
+					return response.Usage.CompletionTokens
+				}
+				return 0
+			}(),
+			"total_tokens": func() int {
+				if response.Usage != nil {
+					return response.Usage.TotalTokens
+				}
+				return 0
+			}(),
+		})
+		if response.Usage != nil {
+			// Store usage as extra content for persistence and retrieval
+			assistantMsg.ExtraContent = &providers.MessageExtra{
+				Usage: map[string]any{
+					"prompt_tokens":     response.Usage.PromptTokens,
+					"completion_tokens": response.Usage.CompletionTokens,
+					"total_tokens":      response.Usage.TotalTokens,
+				},
+			}
+			logger.InfoCF("agent", "Saved token usage to assistant message", map[string]any{
+				"agent_id":      ts.agent.ID,
+				"prompt_tokens": response.Usage.PromptTokens,
+				"output_tokens": response.Usage.CompletionTokens,
+				"total_tokens":  response.Usage.TotalTokens,
+			})
+		} else {
+			logger.WarnCF("agent", "LLM response has no usage info", map[string]any{
+				"agent_id":  ts.agent.ID,
+				"iteration": iteration,
+			})
+		}
 		for _, tc := range normalizedToolCalls {
 			argumentsJSON, _ := json.Marshal(tc.Arguments)
 			extraContent := tc.ExtraContent

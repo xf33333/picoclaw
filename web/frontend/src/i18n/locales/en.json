@@ -7,6 +7,7 @@
     "agent_group": "Agent",
     "skills": "Skills",
     "tools": "Tools",
+    "usage": "Usage",
     "services": "Services",
     "channels_group": "Channels",
     "show_more_channels": "More",
@@ -572,5 +573,36 @@
       "title": "View Documentation",
       "description": "Need more help? Click the documentation button in the top right corner to view detailed guides and configuration docs."
     }
+  },
+  "usage": {
+    "title": "Usage Statistics",
+    "description": "View message counts, token usage, and cost estimates per model for each session.",
+    "select_date_range": "Select date range",
+    "date_range": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last_7_days": "Last 7 days",
+      "last_30_days": "Last 30 days",
+      "this_month": "This month",
+      "last_month": "Last month"
+    },
+    "total_messages": "Total Messages",
+    "messages_in_period": "Messages in period",
+    "input_tokens": "Input Tokens",
+    "output_tokens": "Output Tokens",
+    "tokens_in_period": "Total tokens in period",
+    "estimated_cost": "Estimated Cost",
+    "cost_estimate": "Based on model pricing",
+    "model_breakdown": "Model Breakdown",
+    "model_breakdown_desc": "Usage statistics broken down by model",
+    "load_error": "Failed to load usage statistics",
+    "no_data": "No usage data available",
+    "model_name": "Model",
+    "messages": "Messages",
+    "input": "Input",
+    "output": "Output",
+    "total": "Total",
+    "cost": "Cost",
+    "sessions": "Sessions"
   }
 }
