@@ -173,6 +173,8 @@ func isPublicLauncherDashboardPath(method, p string) bool {
 		return method == http.MethodPost
 	case "/api/auth/status":
 		return method == http.MethodGet
+	case "/api/usage":
+		return method == http.MethodGet
 	}
 	return false
 }

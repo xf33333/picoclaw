@@ -5,6 +5,7 @@ import { launcherFetch } from "@/api/http"
 export interface UsageStats {
   model_name: string
   model: string
+  provider?: string
   message_count: number
   input_tokens: number
   output_tokens: number

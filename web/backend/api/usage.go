@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ func (h *Handler) registerUsageRoutes(mux *http.ServeMux) {
 type UsageStats struct {
 	ModelName     string  `json:"model_name"`
 	Model         string  `json:"model"`
+	Provider      string  `json:"provider,omitempty"`
 	MessageCount  int     `json:"message_count"`
 	InputTokens   int     `json:"input_tokens"`
 	OutputTokens  int     `json:"output_tokens"`
@@ -239,12 +241,17 @@ type messageWithUsage struct {
 	ReasoningContent string               `json:"reasoning_content,omitempty"`
 	ToolCalls        []providers.ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string               `json:"tool_call_id,omitempty"`
-	// Usage fields stored by agent loop
-	PromptTokens     int `json:"prompt_tokens,omitempty"`
-	CompletionTokens int `json:"completion_tokens,omitempty"`
-	TotalTokens      int `json:"total_tokens,omitempty"`
+	// Usage fields stored by agent loop in extra_content
+	ExtraContent *messageExtraContent `json:"extra_content,omitempty"`
 	// Model info
 	Model string `json:"model,omitempty"`
+}
+
+// messageExtraContent holds optional metadata attached to a message.
+type messageExtraContent struct {
+	Usage    map[string]any `json:"usage,omitempty"`    // token usage info
+	Model    string         `json:"model,omitempty"`    // model name used
+	Provider string         `json:"provider,omitempty"` // provider name used
 }
 
 // handleGetUsage returns usage statistics aggregated by model.
@@ -255,14 +262,16 @@ func (h *Handler) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 
 	dir, err := h.sessionsDir()
 	if err != nil {
-		http.Error(w, "failed to resolve sessions directory", http.StatusInternalServerError)
+		log.Printf("handleGetUsage: sessionsDir error: %v", err)
+		http.Error(w, fmt.Sprintf("failed to resolve sessions directory: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Load config to map model names to model identifiers
 	cfg, err := config.LoadConfig(h.configPath)
 	if err != nil {
-		http.Error(w, "failed to load config", http.StatusInternalServerError)
+		log.Printf("handleGetUsage: LoadConfig error: %v", err)
+		http.Error(w, fmt.Sprintf("failed to load config: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -350,8 +359,14 @@ func (h *Handler) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Determine model name
-			modelName := msgWithUsage.Model
+			// Determine model name - first try extra_content.model, then message.model (deprecated)
+			modelName := ""
+			if msgWithUsage.ExtraContent != nil && msgWithUsage.ExtraContent.Model != "" {
+				modelName = msgWithUsage.ExtraContent.Model
+			}
+			if modelName == "" {
+				modelName = msgWithUsage.Model
+			}
 			if modelName == "" {
 				modelName = defaultModelName
 			}
@@ -360,17 +375,39 @@ func (h *Handler) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 				modelName = "unknown"
 			}
 
-			if _, exists := statsByModel[modelName]; !exists {
-				statsByModel[modelName] = &modelStats{
+			// Get provider name from extra_content
+			providerName := ""
+			if msgWithUsage.ExtraContent != nil && msgWithUsage.ExtraContent.Provider != "" {
+				providerName = msgWithUsage.ExtraContent.Provider
+			}
+
+			// Create composite key for model+provider combination
+			statsKey := modelName
+			if providerName != "" {
+				statsKey = providerName + "/" + modelName
+			}
+
+			if _, exists := statsByModel[statsKey]; !exists {
+				statsByModel[statsKey] = &modelStats{
 					SessionKeys: make(map[string]struct{}),
 				}
 			}
 
-			ms := statsByModel[modelName]
+			ms := statsByModel[statsKey]
 			ms.MessageCount++
-			ms.InputTokens += msgWithUsage.PromptTokens
-			ms.OutputTokens += msgWithUsage.CompletionTokens
-			ms.TotalTokens += msgWithUsage.TotalTokens
+			// Extract token usage from extra_content.usage
+			if msgWithUsage.ExtraContent != nil && msgWithUsage.ExtraContent.Usage != nil {
+				usage := msgWithUsage.ExtraContent.Usage
+				if promptTokens, ok := usage["prompt_tokens"].(float64); ok {
+					ms.InputTokens += int(promptTokens)
+				}
+				if completionTokens, ok := usage["completion_tokens"].(float64); ok {
+					ms.OutputTokens += int(completionTokens)
+				}
+				if totalTokens, ok := usage["total_tokens"].(float64); ok {
+					ms.TotalTokens += int(totalTokens)
+				}
+			}
 			ms.SessionKeys[sess.Key] = struct{}{}
 		}
 	}
@@ -380,23 +417,34 @@ func (h *Handler) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	var totalInputTokens, totalOutputTokens, totalTokens, totalMessageCount int
 	var totalEstimatedCost float64
 
-	for modelName, ms := range statsByModel {
-		modelIdentifier := modelNameToModel[modelName]
-		if modelIdentifier == "" {
-			modelIdentifier = modelName
+	for statsKey, ms := range statsByModel {
+		// statsKey is either "model" or "provider/model"
+		// Extract model name and provider for display
+		var modelIdentifier, providerIdentifier string
+		if strings.Contains(statsKey, "/") {
+			parts := strings.SplitN(statsKey, "/", 2)
+			providerIdentifier = parts[0]
+			modelIdentifier = parts[1]
+		} else {
+			modelIdentifier = statsKey
+		}
+
+		// Try to look up the full model name from config
+		if mappedModel := modelNameToModel[modelIdentifier]; mappedModel != "" {
+			modelIdentifier = mappedModel
 		}
 
 		pricing := getModelPricing(modelIdentifier)
 		if pricing.InputPricePerMTok == 0 && pricing.OutputPricePerMTok == 0 {
-			// Try with model name as well
-			pricing = getModelPricing(modelName)
+			// Try with model name as well - modelIdentifier already contains the model name
 		}
 
 		estimatedCost := calculateCost(ms.InputTokens, ms.OutputTokens, pricing)
 
 		stat := UsageStats{
-			ModelName:     modelName,
+			ModelName:     modelIdentifier,
 			Model:         modelIdentifier,
+			Provider:      providerIdentifier,
 			MessageCount:  ms.MessageCount,
 			InputTokens:   ms.InputTokens,
 			OutputTokens:  ms.OutputTokens,

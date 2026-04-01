@@ -75,8 +75,9 @@ type Message struct {
 
 // MessageExtra holds optional metadata attached to a message.
 type MessageExtra struct {
-	Usage map[string]any `json:"usage,omitempty"` // token usage info
-	Model string         `json:"model,omitempty"` // model name used
+	Usage    map[string]any `json:"usage,omitempty"`    // token usage info
+	Model    string         `json:"model,omitempty"`    // model name used
+	Provider string         `json:"provider,omitempty"` // provider name used
 }
 
 type ToolDefinition struct {

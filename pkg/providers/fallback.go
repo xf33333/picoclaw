@@ -9,7 +9,8 @@ import (
 
 // FallbackChain orchestrates model fallback across multiple candidates.
 type FallbackChain struct {
-	cooldown *CooldownTracker
+	cooldown   *CooldownTracker
+	lastResult *FallbackResult // stores the last successful result for usage tracking
 }
 
 // FallbackCandidate represents one model/provider to try.
@@ -39,6 +40,15 @@ type FallbackAttempt struct {
 // NewFallbackChain creates a new fallback chain with the given cooldown tracker.
 func NewFallbackChain(cooldown *CooldownTracker) *FallbackChain {
 	return &FallbackChain{cooldown: cooldown}
+}
+
+// GetLastResult returns the last successful fallback result for usage tracking.
+// The first return value is the result, the second indicates if a result exists.
+func (fc *FallbackChain) GetLastResult() (*FallbackResult, bool) {
+	if fc == nil || fc.lastResult == nil {
+		return nil, false
+	}
+	return fc.lastResult, true
 }
 
 // ResolveCandidates parses model config into a deduplicated candidate list.
@@ -147,6 +157,8 @@ func (fc *FallbackChain) Execute(
 			result.Response = resp
 			result.Provider = candidate.Provider
 			result.Model = candidate.Model
+			// Store last result for usage tracking
+			fc.lastResult = result
 			return result, nil
 		}
 

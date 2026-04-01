@@ -2158,49 +2158,7 @@ turnLoop:
 		}
 		logger.DebugCF("agent", "LLM response", llmResponseFields)
 
-		if len(response.ToolCalls) == 0 || gracefulTerminal {
-			responseContent := response.Content
-			if responseContent == "" && response.ReasoningContent != "" {
-				responseContent = response.ReasoningContent
-			}
-			if steerMsgs := al.dequeueSteeringMessagesForScope(ts.sessionKey); len(steerMsgs) > 0 {
-				logger.InfoCF("agent", "Steering arrived after direct LLM response; continuing turn",
-					map[string]any{
-						"agent_id":       ts.agent.ID,
-						"iteration":      iteration,
-						"steering_count": len(steerMsgs),
-					})
-				pendingMessages = append(pendingMessages, steerMsgs...)
-				continue
-			}
-			finalContent = responseContent
-			logger.InfoCF("agent", "LLM response without tool calls (direct answer)",
-				map[string]any{
-					"agent_id":      ts.agent.ID,
-					"iteration":     iteration,
-					"content_chars": len(finalContent),
-				})
-			break
-		}
-
-		normalizedToolCalls := make([]providers.ToolCall, 0, len(response.ToolCalls))
-		for _, tc := range response.ToolCalls {
-			normalizedToolCalls = append(normalizedToolCalls, providers.NormalizeToolCall(tc))
-		}
-
-		toolNames := make([]string, 0, len(normalizedToolCalls))
-		for _, tc := range normalizedToolCalls {
-			toolNames = append(toolNames, tc.Name)
-		}
-		logger.InfoCF("agent", "LLM requested tool calls",
-			map[string]any{
-				"agent_id":  ts.agent.ID,
-				"tools":     toolNames,
-				"count":     len(normalizedToolCalls),
-				"iteration": iteration,
-			})
-
-		allResponsesHandled := len(normalizedToolCalls) > 0
+		// Build assistant message with usage info (before any break/continue)
 		assistantMsg := providers.Message{
 			Role:             "assistant",
 			Content:          response.Content,
@@ -2231,13 +2189,28 @@ turnLoop:
 			}(),
 		})
 		if response.Usage != nil {
-			// Store usage as extra content for persistence and retrieval
+			// Determine the provider and model actually used
+			// Check if fallback was used and got the result
+			var usedProvider string
+			var usedModel string
+			if fbResult, hasFB := al.fallback.GetLastResult(); hasFB && fbResult.Provider != "" {
+				usedProvider = fbResult.Provider
+				usedModel = fbResult.Model
+			} else if len(activeCandidates) > 0 {
+				// No fallback or fallback not used, get from active candidates
+				usedProvider = activeCandidates[0].Provider
+				usedModel = llmModel
+			}
+			// Store usage and model info as extra content for persistence and retrieval
 			assistantMsg.ExtraContent = &providers.MessageExtra{
 				Usage: map[string]any{
 					"prompt_tokens":     response.Usage.PromptTokens,
 					"completion_tokens": response.Usage.CompletionTokens,
 					"total_tokens":      response.Usage.TotalTokens,
 				},
+				// Store model and provider info for usage statistics
+				Model:    usedModel,
+				Provider: usedProvider,
 			}
 			logger.InfoCF("agent", "Saved token usage to assistant message", map[string]any{
 				"agent_id":      ts.agent.ID,
@@ -2251,6 +2224,62 @@ turnLoop:
 				"iteration": iteration,
 			})
 		}
+
+		if len(response.ToolCalls) == 0 || gracefulTerminal {
+			responseContent := response.Content
+			if responseContent == "" && response.ReasoningContent != "" {
+				responseContent = response.ReasoningContent
+			}
+			if steerMsgs := al.dequeueSteeringMessagesForScope(ts.sessionKey); len(steerMsgs) > 0 {
+				logger.InfoCF("agent", "Steering arrived after direct LLM response; continuing turn",
+					map[string]any{
+						"agent_id":       ts.agent.ID,
+						"iteration":      iteration,
+						"steering_count": len(steerMsgs),
+					})
+				pendingMessages = append(pendingMessages, steerMsgs...)
+				// Still need to save the assistant message before continuing
+				messages = append(messages, assistantMsg)
+				if !ts.opts.NoHistory {
+					ts.agent.Sessions.AddFullMessage(ts.sessionKey, assistantMsg)
+					ts.recordPersistedMessage(assistantMsg)
+				}
+				continue
+			}
+			finalContent = responseContent
+			logger.InfoCF("agent", "LLM response without tool calls (direct answer)",
+				map[string]any{
+					"agent_id":      ts.agent.ID,
+					"iteration":     iteration,
+					"content_chars": len(finalContent),
+				})
+			// Save the assistant message before breaking
+			messages = append(messages, assistantMsg)
+			if !ts.opts.NoHistory {
+				ts.agent.Sessions.AddFullMessage(ts.sessionKey, assistantMsg)
+				ts.recordPersistedMessage(assistantMsg)
+			}
+			break
+		}
+
+		normalizedToolCalls := make([]providers.ToolCall, 0, len(response.ToolCalls))
+		for _, tc := range response.ToolCalls {
+			normalizedToolCalls = append(normalizedToolCalls, providers.NormalizeToolCall(tc))
+		}
+
+		toolNames := make([]string, 0, len(normalizedToolCalls))
+		for _, tc := range normalizedToolCalls {
+			toolNames = append(toolNames, tc.Name)
+		}
+		logger.InfoCF("agent", "LLM requested tool calls",
+			map[string]any{
+				"agent_id":  ts.agent.ID,
+				"tools":     toolNames,
+				"count":     len(normalizedToolCalls),
+				"iteration": iteration,
+			})
+
+		allResponsesHandled := len(normalizedToolCalls) > 0
 		for _, tc := range normalizedToolCalls {
 			argumentsJSON, _ := json.Marshal(tc.Arguments)
 			extraContent := tc.ExtraContent

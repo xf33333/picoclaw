@@ -248,9 +248,16 @@ export function UsagePage() {
                     >
                       <td className="py-3 px-4 text-sm font-medium">
                         <div>
-                          <div>{stat.model_name}</div>
+                          <div className="flex items-center gap-2">
+                            <span>{stat.model_name}</span>
+                            {stat.provider && (
+                              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-muted-foreground uppercase tracking-wider">
+                                {stat.provider}
+                              </span>
+                            )}
+                          </div>
                           {stat.model !== stat.model_name && (
-                            <div className="text-muted-foreground text-xs">
+                            <div className="text-muted-foreground text-xs font-normal">
                               {stat.model}
                             </div>
                           )}
